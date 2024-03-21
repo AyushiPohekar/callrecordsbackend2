@@ -11,6 +11,7 @@ const callSchema = new mongoose.Schema({
     endTime: Date,
     Date:Date,
     duration: String,
+    recordings:String,
   });
 
   const callrecords = mongoose.model("callrecords", callSchema);
