@@ -145,102 +145,146 @@ app.get("/listCalls/:phoneNumber", async (req, res) => {
   }
 });
 let data;
+// app.get("/listCallsByDateSolaris/:phoneNumber", async (req, res) => {
+//   try {
+//     const phoneNumber = req.params.phoneNumber;
+ 
+//     const callsto = await client.calls.list({
+//       to: phoneNumber,
+      
+//     });
+ 
+//     const callfrom = await client.calls.list({
+//       from: phoneNumber,
+      
+//     });
+  
+//     const calls=[...callsto, ...callfrom]
+
+//     // const callDetails = calls.map((call) => ({
+    
+//     //   sid: call.sid,
+//     //   status: call.status,
+//     //   direction: call.direction,
+//     //   to: call.to,
+//     //   from: call.from,
+//     //   uri:call.uri,
+//     //   startTime: formatDateTime(new Date(call.startTime)),
+//     //   endTime: formatDateTime(new Date(call.endTime)),
+//     //   duration: call.duration,
+//     //   datecreated: formatDateTime(call.startTime),
+//     // }));
+
+//     // callDetails?.map(async(call)=>
+//     // {return (getdata(call?.uri))}
+//     // )
+//     const callDetails=calls;
+//     await Promise.all(
+//       callDetails.map(async (call) => {
+//         call.recordings = await getdata(call.uri);
+//       })
+//     );
+  
+//     console.log(callDetails)
+
+//     // const newCalls = await Promise.all(
+//     //   callDetails.map(async (detail) => {
+//     //     const existingCall = await Call.findOne({ sid: detail.sid });
+
+//     //     if (!existingCall) {
+//     //       return Call.create(detail);
+//     //     }
+
+//     //     return existingCall;
+//     //   })
+//     // );
+//     // const newCalls=await Promise.all(
+//     //   callDetails.map(async (detail) => {
+//     //     try {
+//     //       const existingCall = await Call.findOne({ sid: detail.sid });
+
+//     //       if (!existingCall) {
+//     //         return Call.create(detail);
+//     //       } else {
+//     //         // Update existing call details with recordings
+//     //         existingCall.recordings = detail.recordings;
+//     //         await existingCall.save();
+//     //         return existingCall;
+//     //       }
+//     //     } catch (error) {
+//     //       console.error("Error saving call details:", error.message);
+//     //       return null;
+//     //     }
+//     //   })
+//     // );
+
+//     const startDate = req.query.start_date
+//       ? new Date(req.query.start_date)
+//       : null;
+
+//     const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
+
+//     const filteredCalls = callDetails.filter((call) => {
+//       const callDate = call.startTime;
+
+//       return (
+//         (!startDate || callDate >= startDate) &&
+//         (!endDate || callDate <= endDate)
+//       );
+//     });
+    
+
+//     res.send(filteredCalls);
+//     console.log(filteredCalls.length);
+//   } catch (error) {
+//     console.error("Error fetching call details:", error.message);
+//     res
+//       .status(500)
+//       .json({ error: `Error fetching call details: ${error.message}` });
+//   }
+// });
+
+
 app.get("/listCallsByDateSolaris/:phoneNumber", async (req, res) => {
   try {
     const phoneNumber = req.params.phoneNumber;
  
     const callsto = await client.calls.list({
       to: phoneNumber,
-      
     });
  
     const callfrom = await client.calls.list({
       from: phoneNumber,
-      
     });
   
-    const calls=[...callsto, ...callfrom]
+    const calls = [...callsto, ...callfrom];
 
-    const callDetails = calls.map((call) => ({
-    
-      sid: call.sid,
-      status: call.status,
-      direction: call.direction,
-      to: call.to,
-      from: call.from,
-      uri:call.uri,
-      startTime: formatDateTime(new Date(call.startTime)),
-      endTime: formatDateTime(new Date(call.endTime)),
-      duration: call.duration,
-      datecreated: formatDateTime(call.startTime),
-    }));
-
-    // callDetails?.map(async(call)=>
-    // {return (getdata(call?.uri))}
-    // )
-    await Promise.all(
-      callDetails.map(async (call) => {
-        call.recordings = await getdata(call.uri);
-      })
-    );
-    console.log(callDetails)
-
-    // const newCalls = await Promise.all(
-    //   callDetails.map(async (detail) => {
-    //     const existingCall = await Call.findOne({ sid: detail.sid });
-
-    //     if (!existingCall) {
-    //       return Call.create(detail);
-    //     }
-
-    //     return existingCall;
-    //   })
-    // );
-    const newCalls=await Promise.all(
-      callDetails.map(async (detail) => {
-        try {
-          const existingCall = await Call.findOne({ sid: detail.sid });
-
-          if (!existingCall) {
-            return Call.create(detail);
-          } else {
-            // Update existing call details with recordings
-            existingCall.recordings = detail.recordings;
-            await existingCall.save();
-            return existingCall;
-          }
-        } catch (error) {
-          console.error("Error saving call details:", error.message);
-          return null;
-        }
+    const callDetails = await Promise.all(
+      calls.map(async (call) => {
+        const recordings = await getdata(call.uri);
+        const callData = call.toJSON(); // Convert Twilio call object to plain JavaScript object
+        callData.recordings = recordings;
+        return callData;
       })
     );
 
-    const startDate = req.query.start_date
-      ? new Date(req.query.start_date)
-      : null;
-
+    const startDate = req.query.start_date ? new Date(req.query.start_date) : null;
     const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
 
-    const filteredCalls = newCalls.filter((call) => {
-      const callDate = call.startTime;
-
-      return (
-        (!startDate || callDate >= startDate) &&
-        (!endDate || callDate <= endDate)
-      );
+    const filteredCalls = callDetails.filter((call) => {
+      const callDate = new Date(call.startTime);
+      return (!startDate || callDate >= startDate) && (!endDate || callDate <= endDate);
     });
-    
 
     res.send(filteredCalls);
     console.log(filteredCalls.length);
   } catch (error) {
     console.error("Error fetching call details:", error.message);
-    res
-      .status(500)
-      .json({ error: `Error fetching call details: ${error.message}` });
+    res.status(500).json({ error: `Error fetching call details: ${error.message}` });
   }
 });
+
+
 
 
 const getdata=async(uri)=>{
@@ -330,7 +374,7 @@ app.get("/listCallsforclient", async (req, res) => {
   }
 });
 
-const PORT = 8000;
+const PORT = 8010;
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
