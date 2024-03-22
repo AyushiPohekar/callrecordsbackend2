@@ -1,15 +1,19 @@
 const express = require("express");
-
+const bodyParser = require('body-parser');
+const fs = require('fs');
+const { textToSpeech } = require('@google-cloud/text-to-speech'); 
 const twilio = require("twilio");
 const cors = require("cors");
 const Connection = require("./db");
 const Call = require("./CallSchema");
 const dotenv = require("dotenv");
+const ffmpeg = require('fluent-ffmpeg');
+
 const { default: axios } = require("axios");
 dotenv.config();
-console.log("hi");
+
 // console.log('Environment variables loaded:', process.env);
-Connection();
+
 const app = express();
 
 app.use(cors());
@@ -21,9 +25,8 @@ const authToken = process.env.TWILIO_AUTH_TOKEN;
 console.log(accountSid);
 console.log(authToken);
 const client = twilio(accountSid, authToken);
-console.log(client)
+console.log(client);
 
-// //get all calls of particular number
 function formatDateTime(date) {
   const options = {
     year: "numeric",
@@ -43,329 +46,46 @@ function formatDateTime(date) {
 
   return formattedDate;
 }
-app.get("/listCalls/:phoneNumber", async (req, res) => {
-  try {
-    const phoneNumber = req.params.phoneNumber;
-
-    // Fetch calls made to or from the specified phone number
-    const calls = await client.calls.list({
-      to: phoneNumber,
-      //from: phoneNumber,
-      limit: 20,
-    });
-
-    // Extract relevant details and format the response
-    const callDetails = calls.map((call) => ({
-      sid: call.sid,
-      status: call.status,
-      direction: call.direction,
-      to: call.to,
-      from: call.from,
-      startTime: formatDateTime(new Date(call.startTime)),
-      endTime: formatDateTime(new Date(call.endTime)),
-      duration: call.duration,
-      Date: formatDateTime(new Date(call.startTime)),
-    }));
-
-    const newCalls = await Promise.all(
-      callDetails.map(async (detail) => {
-        const existingCall = await Call.findOne({ sid: detail.sid });
-
-        if (!existingCall) {
-          return Call.create(detail);
-        }
-
-        return existingCall;
-      })
-    );
-
-    const htmlTable = `
-    <html>
-      <head>
-        <style>
-          table {
-            font-family: Arial, sans-serif;
-            border-collapse: collapse;
-            width: 100%;
-          }
-
-          th, td {
-            border: 1px solid #dddddd;
-            text-align: left;
-            padding: 8px;
-          }
-
-          th {
-            background-color: #f2f2f2;
-          }
-        </style>
-      </head>
-      <body>
-        <h2>Call Details for Phone Number ${phoneNumber}</h2>
-        <table>
-          <tr>
-            <th>SID</th>
-            <th>Status</th>
-            <th>Direction</th>
-            <th>To</th>
-            <th>From</th>
-            <th>Start Time</th>
-            <th>End Time</th>
-            <th>Duration</th>
-            <th>Date</th>
-          </tr>
-          ${newCalls
-            .map(
-              (call) => `
-            <tr>
-              <td>${call.sid}</td>
-              <td>${call.status}</td>
-              <td>${call.direction}</td>
-              <td>${call.to}</td>
-              <td>${call.from}</td>
-              <td>${call.startTime}</td>
-              <td>${call.endTime}</td>
-              <td>${call.duration}</td>
-              <td>${call.Date}</td>
-            </tr>
-          `
-            )
-            .join("")}
-        </table>
-      </body>
-    </html>
-  `;
-
-    res.json(newCalls);
-  } catch (error) {
-    console.error("Error fetching call details:", error.message);
-    res
-      .status(500)
-      .json({ error: `Error fetching call details: ${error.message}` });
-  }
-});
-let data;
-// app.get("/listCallsByDateSolaris/:phoneNumber", async (req, res) => {
-//   try {
-//     const phoneNumber = req.params.phoneNumber;
- 
-//     const callsto = await client.calls.list({
-//       to: phoneNumber,
-      
-//     });
- 
-//     const callfrom = await client.calls.list({
-//       from: phoneNumber,
-      
-//     });
-  
-//     const calls=[...callsto, ...callfrom]
-
-//     // const callDetails = calls.map((call) => ({
-    
-//     //   sid: call.sid,
-//     //   status: call.status,
-//     //   direction: call.direction,
-//     //   to: call.to,
-//     //   from: call.from,
-//     //   uri:call.uri,
-//     //   startTime: formatDateTime(new Date(call.startTime)),
-//     //   endTime: formatDateTime(new Date(call.endTime)),
-//     //   duration: call.duration,
-//     //   datecreated: formatDateTime(call.startTime),
-//     // }));
-
-//     // callDetails?.map(async(call)=>
-//     // {return (getdata(call?.uri))}
-//     // )
-//     const callDetails=calls;
-//     await Promise.all(
-//       callDetails.map(async (call) => {
-//         call.recordings = await getdata(call.uri);
-//       })
-//     );
-  
-//     console.log(callDetails)
-
-//     // const newCalls = await Promise.all(
-//     //   callDetails.map(async (detail) => {
-//     //     const existingCall = await Call.findOne({ sid: detail.sid });
-
-//     //     if (!existingCall) {
-//     //       return Call.create(detail);
-//     //     }
-
-//     //     return existingCall;
-//     //   })
-//     // );
-//     // const newCalls=await Promise.all(
-//     //   callDetails.map(async (detail) => {
-//     //     try {
-//     //       const existingCall = await Call.findOne({ sid: detail.sid });
-
-//     //       if (!existingCall) {
-//     //         return Call.create(detail);
-//     //       } else {
-//     //         // Update existing call details with recordings
-//     //         existingCall.recordings = detail.recordings;
-//     //         await existingCall.save();
-//     //         return existingCall;
-//     //       }
-//     //     } catch (error) {
-//     //       console.error("Error saving call details:", error.message);
-//     //       return null;
-//     //     }
-//     //   })
-//     // );
-
-//     const startDate = req.query.start_date
-//       ? new Date(req.query.start_date)
-//       : null;
-
-//     const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
-
-//     const filteredCalls = callDetails.filter((call) => {
-//       const callDate = call.startTime;
-
-//       return (
-//         (!startDate || callDate >= startDate) &&
-//         (!endDate || callDate <= endDate)
-//       );
-//     });
-    
-
-//     res.send(filteredCalls);
-//     console.log(filteredCalls.length);
-//   } catch (error) {
-//     console.error("Error fetching call details:", error.message);
-//     res
-//       .status(500)
-//       .json({ error: `Error fetching call details: ${error.message}` });
-//   }
-// });
-
 
 app.get("/listCallsByDateSolaris/:phoneNumber", async (req, res) => {
   try {
     const phoneNumber = req.params.phoneNumber;
- 
+
     const callsto = await client.calls.list({
       to: phoneNumber,
     });
- 
+
     const callfrom = await client.calls.list({
       from: phoneNumber,
+      direction: "outbound",
     });
-  
+
     const calls = [...callsto, ...callfrom];
 
     const callDetails = await Promise.all(
       calls.map(async (call) => {
         const recordings = await getdata(call.uri);
-        const callData = call.toJSON(); // Convert Twilio call object to plain JavaScript object
+        const callData = call.toJSON();
         callData.recordings = recordings;
         return callData;
-      })
-    );
-
-    const startDate = req.query.start_date ? new Date(req.query.start_date) : null;
-    const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
-
-    const filteredCalls = callDetails.filter((call) => {
-      const callDate = new Date(call.startTime);
-      return (!startDate || callDate >= startDate) && (!endDate || callDate <= endDate);
-    });
-
-    res.send(filteredCalls);
-    console.log(filteredCalls.length);
-  } catch (error) {
-    console.error("Error fetching call details:", error.message);
-    res.status(500).json({ error: `Error fetching call details: ${error.message}` });
-  }
-});
-
-
-
-
-const getdata=async(uri)=>{
-  console.log(uri);
- 
-
-    const authHeader = {
-      auth: {
-          username: accountSid,
-          password: authToken
-      }
-  };
-
-  try {
-      const res = await axios.get(`https://api.twilio.com${uri}`, authHeader);
-      const recordingsUri = res.data.subresource_uris.recordings;
-
-      
-      if (recordingsUri) {
-          const recordingsRes = await axios.get(`https://api.twilio.com${recordingsUri}`, authHeader);
-          
-        data=recordingsRes.data.recordings[0].media_url;
-        // console.log(data)
-        return(data)
-      } else {
-          console.log('No recordings found.');
-      }
-     
-  } catch (error) {
-      console.error('Error fetching data:', error.message);
-  }
-}
-
-app.get("/listCallsforclient", async (req, res) => {
-  try {
-    const calls = await client.calls.list({});
-
-    const callDetails = calls.map((call) => ({
-      sid: call.sid,
-      status: call.status,
-      direction: call.direction,
-      to: call.to,
-      from: call.from,
-      
-      startTime: formatDateTime(new Date(call.startTime)),
-      endTime: formatDateTime(new Date(call.endTime)),
-      duration: call.duration,
-      datecreated: formatDateTime(call.startTime),
-    }));
-
- 
-
-    const newCalls = await Promise.all(
-      callDetails.map(async (detail) => {
-        const existingCall = await Call.findOne({ sid: detail.sid });
-
-        if (!existingCall) {
-          return Call.create(detail);
-        }
-
-        return existingCall;
       })
     );
 
     const startDate = req.query.start_date
       ? new Date(req.query.start_date)
       : null;
-
     const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
 
-    const filteredCalls = newCalls.filter((call) => {
-      const callDate = call.Date;
-
+    const filteredCalls = callDetails.filter((call) => {
+      const callDate = new Date(call.startTime);
       return (
         (!startDate || callDate >= startDate) &&
         (!endDate || callDate <= endDate)
       );
     });
 
-    res.send(calls);
-    console.log(callDetails.length);
+    res.send(filteredCalls);
+    console.log(filteredCalls.length);
   } catch (error) {
     console.error("Error fetching call details:", error.message);
     res
@@ -374,7 +94,158 @@ app.get("/listCallsforclient", async (req, res) => {
   }
 });
 
-const PORT = 8010;
+
+
+
+
+// app.get("/listCallsByDateSolaris/:phoneNumber", async (req, res) => {
+//   try {
+//     const phoneNumber = req.params.phoneNumber;
+
+//     const callsto = await client.calls.list({
+//       to: phoneNumber,
+//     });
+
+//     const callfrom = await client.calls.list({
+//       from: phoneNumber,
+//     });
+
+//     console.log("Calls from:", callfrom); // Log the calls from to check for data
+
+//     const calls = [...callsto, ...callfrom];
+
+//     const callDetails = await Promise.all(
+//       calls.map(async (call) => {
+//         const recordings = await getdata(call.uri); // Assuming this function returns recording URLs
+//         const callData = call.toJSON(); // Convert Twilio call object to plain JavaScript object
+      
+//         callData.recordingUrl = recordings; // Set recording URL directly
+//         return callData;
+//       })
+//     );
+
+//     const startDate = req.query.start_date ? new Date(req.query.start_date) : null;
+//     const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
+
+//     const filteredCalls = callDetails.filter((call) => {
+//       const callDate = new Date(call.startTime);
+//       return (!startDate || callDate >= startDate) && (!endDate || callDate <= endDate);
+//     });
+
+//     // Fetch recording data with authentication
+//     const callsWithRecordings = await Promise.all(filteredCalls.map(async (call) => {
+//       try {
+//         // Add authentication headers
+//         const authHeader = {
+//           auth: {
+//             username: accountSid,
+//             password: authToken,
+//           },
+//         };
+
+
+        
+      
+    
+//         const response = await axios.get(call.recordingUrl, authHeader);
+       
+     
+//         // // Assuming the response.data contains the audio content (e.g., binary audio data)
+//         //  const audioContent = response.data;
+       
+//         // // console
+//         // // // Encode the audio content as Base64
+//         //  const encodedAudio = Buffer.from(audioContent, 'binary').toString('base64');
+
+//         // // // Add the encoded audio to the call object
+//         // call.encodedRecording = encodedAudio;
+//         // const audioBlob = new Blob([res.data], { type: 'audio/wav' });
+//         // const audioUrl = URL.createObjectURL(audioBlob);
+//         // call.encodedRecording=audioUrl;
+//         const base64AudioData = Buffer.from(response.data, 'binary').toString('base64');
+        
+//         // Construct a data URL for the audio
+//         const audioDataUrl = `data:audio/wav;base64,${base64AudioData}`;
+        
+//         // Set the data URL as the encodedRecording property in the call object
+//         call.encodedRecording = audioDataUrl;
+//       } catch (error) {
+//         console.error("Error fetching recording:", error.message);
+//         call.encodedRecording = null;
+//       }
+//       return call;
+//     }));
+
+//     res.json(callsWithRecordings); // Send the response with call data including encoded recordings
+//     console.log(callsWithRecordings.length);
+//   } catch (error) {
+//     console.error("Error fetching call details:", error.message);
+//     res.status(500).json({ error: `Error fetching call details: ${error.message}` });
+//   }
+// });
+
+
+
+
+
+
+const getdata = async (uri) => {
+  console.log(uri);
+
+  const authHeader = {
+    auth: {
+      username: accountSid,
+      password: authToken,
+    },
+  };
+
+  try {
+    const res = await axios.get(`https://api.twilio.com${uri}`, authHeader);
+    const recordingsUri = res.data.subresource_uris.recordings;
+
+    if (recordingsUri) {
+      const recordingsRes = await axios.get(
+        `https://api.twilio.com${recordingsUri}`,
+        authHeader
+      );
+
+      data = recordingsRes.data.recordings[0].media_url;
+      // console.log(data)
+      return data;
+    } else {
+      console.log("No recordings found.");
+    }
+  } catch (error) {
+    console.error("Error fetching data:", error.message);
+  }
+};
+// const getdata = async (uri) => {
+//   try {
+//      const authHeader = {
+//     auth: {
+//       username: accountSid,
+//       password: authToken,
+//     },
+//   };
+
+//     const res = await axios.get(`https://api.twilio.com${uri}`, authHeader);
+//     const recordingsUri = res.data.subresource_uris.recordings;
+
+//     if (recordingsUri) {
+//       const recordingsRes = await axios.get(`https://api.twilio.com${recordingsUri}`, authHeader);
+   
+//       return recordingsRes.data;
+//     } else {
+//       console.log("No recordings found.");
+//       return null;
+//     }
+//   } catch (error) {
+//     console.error("Error fetching data:", error.message);
+//     throw error;
+//   }
+// };
+
+const PORT = 8000;
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
