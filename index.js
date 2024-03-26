@@ -78,6 +78,7 @@ app.get("/listCallsByDateSolaris/:phoneNumber", async (req, res) => {
 
     const filteredCalls = callDetails.filter((call) => {
       const callDate = new Date(call.startTime);
+      console.log(callDate)
       return (
         (!startDate || callDate >= startDate) &&
         (!endDate || callDate <= endDate)
@@ -86,6 +87,66 @@ app.get("/listCallsByDateSolaris/:phoneNumber", async (req, res) => {
 
     res.send(filteredCalls);
     console.log(filteredCalls.length);
+  } catch (error) {
+    console.error("Error fetching call details:", error.message);
+    res
+      .status(500)
+      .json({ error: `Error fetching call details: ${error.message}` });
+  }
+});
+app.get("/listCallsByDate/:phoneNumber", async (req, res) => {
+  try {
+    const phoneNumber = req.params.phoneNumber;
+
+    // Fetch calls made to or from the specified phone number
+    const calls = await client.calls.list({
+      to: phoneNumber,
+      limit: 20,
+    });
+
+    // Extract relevant details and format the response
+    const callDetails = calls.map((call) => ({
+      sid: call.sid,
+      status: call.status,
+      direction: call.direction,
+      to: call.to,
+      from: call.from,
+      startTime: formatDateTime(new Date(call.startTime)),
+      endTime: formatDateTime(new Date(call.endTime)),
+      duration: call.duration,
+      datecreated: formatDateTime(call.startTime),
+    }));
+
+    // const newCalls = await Promise.all(
+    //   callDetails.map(async (detail) => {
+    //     const existingCall = await Call.findOne({ sid: detail.sid });
+
+    //     if (!existingCall) {
+    //       return Call.create(detail);
+    //     }
+
+    //     return existingCall;
+    //   })
+    // );
+
+    const startDate = req.query.start_date
+      ? new Date(req.query.start_date)
+      : null;
+
+    const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
+
+
+    const filteredCalls = callDetails.filter((call) => {
+
+      const callDate = new Date(call.datecreated);
+      console.log(startDate)
+      return (
+        (!startDate || callDate >= startDate) &&
+        (!endDate || callDate <= endDate)
+      );
+    });
+
+    res.send(filteredCalls);
   } catch (error) {
     console.error("Error fetching call details:", error.message);
     res
