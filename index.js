@@ -101,7 +101,7 @@ app.get("/listCallsByDate/:phoneNumber", async (req, res) => {
     // Fetch calls made to or from the specified phone number
     const calls = await client.calls.list({
       to: phoneNumber,
-      limit: 20,
+  
     });
 
     // Extract relevant details and format the response
